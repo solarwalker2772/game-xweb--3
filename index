@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game X Web3</title>
+<!-- Google Font for stylish header -->
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.8.0/dist/ethers.min.js"></script>
+<style>
+:root{
+  --bg:#0b1020; --panel:#111325; --muted:#9aa3b2; --accent:#6ee7b7;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+body{background:linear-gradient(180deg,#02040a 0%, #071028 60%); color:#eef2f7; margin:0; padding:0;}
+.wrap{max-width:1100px;margin:28px auto;padding:20px;}
+header{text-align:center;margin-bottom:20px;}
+header h1{
+  font-size: 48px;
+  font-weight: 900;
+  background: linear-gradient(90deg, #6ee7b7, #3b82f6, #f472b6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 2px 2px 12px rgba(0,0,0,0.5);
+  letter-spacing: 2px;
+  font-family: 'Orbitron', sans-serif;
+}
+header p{color:var(--muted); font-size:14px;}
+button{padding:8px 14px;border-radius:8px;border:none;background:var(--accent);color:#0b1020;font-weight:bold;cursor:pointer;}
+.input{padding:8px;border-radius:8px;border:none;background:#0d1626;color:#eef2f7;font-size:13px;}
+.panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:14px;border-radius:12px;box-shadow:0 6px 18px rgba(3,6,18,0.6);}
+.grid{display:grid;grid-template-columns:1fr 360px;gap:18px;margin-top:18px;}
+.small{font-size:12px;color:var(--muted);}
+.list{display:flex;flex-direction:column;gap:8px;}
+.game-row{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px;background:rgba(255,255,255,0.015);}
+.twitch-frame{width:100%;height:220px;border:0;border-radius:8px;}
+@media(max-width:880px){.grid{grid-template-columns:1fr;}.twitch-frame{height:180px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<h1>Game X</h1>
+<p>News · Livestreams · Games Library · Web3 Ready</p>
+<button id="connectBtn">Connect MetaMask</button>
+<div id="walletAddress" class="small"></div>
+</header>
+
+<div class="grid">
+<!-- LEFT: News -->
+<section class="panel" id="newsPanel">
+<h2>Latest Gaming News</h2>
+<div style="display:flex;gap:8px;margin:10px 0 12px 0">
+<input id="newsQuery" class="input" placeholder="Filter news by title (demo)" />
+<button id="refreshNewsBtn">Refresh</button>
+</div>
+<div class="small" style="margin-bottom:12px">
+Demo news placeholder. Paste a NewsAPI.org key in code to fetch live news.
+</div>
+<div id="newsList"></div>
+</section>
+
+<!-- RIGHT: Streams + Library + NFTs -->
+<aside>
+<div class="panel" style="margin-bottom:14px">
+<h2>Livestreams (Twitch)</h2>
+<div style="display:flex;gap:8px;margin-bottom:8px">
+<input id="twitchInput" class="input" placeholder="Twitch channel name" />
+<button id="addTwitchBtn">Add</button>
+</div>
+<div id="twitchList" class="list"></div>
+</div>
+
+<div class="panel" style="margin-bottom:14px">
+<h2>Games Library</h2>
+<div style="display:flex;gap:8px;margin-bottom:8px">
+<input id="gameInput" class="input" placeholder="Game name" />
+<button id="addGameBtn">Add</button>
+</div>
+<div id="gamesList" class="list"></div>
+</div>
+
+<div class="panel">
+<h2>Web3 Assets (NFTs Placeholder)</h2>
+<p class="small">Connected wallet assets will appear here once integrated with smart contracts or NFT APIs.</p>
+<div id="nftList" class="list"></div>
+</div>
+</aside>
+</div>
+
+<footer class="small" style="margin-top:18px;text-align:center;color:var(--muted);">
+Save as <code>index.html</code> → upload to Netlify / GitHub Pages / GitLab Pages.
+</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.8.0/dist/ethers.min.js"></script>
+<script>
+// --- Demo News ---
+const demoArticles = [
+{ title: "Demo: Autumn LAN Tournament Announced", description: "Top teams will compete for a big prize pool.", url:"#", source:"Demo", publishedAt: new Date().toISOString() },
+{ title: "Demo: Indie Pixel-Platformer Earns Praise", description: "A tiny studio's platformer surprises critics.", url:"#", source:"Demo", publishedAt: new Date().toISOString() },
+{ title: "Demo: New RPG Teaser Drops", description: "A short teaser for an upcoming single-player RPG.", url:"#", source:"Demo", publishedAt: new Date().toISOString() }
+];
+
+// --- DOM Elements ---
+const newsListEl = document.getElementById('newsList');
+const queryEl = document.getElementById('newsQuery');
+const refreshBtn = document.getElementById('refreshNewsBtn');
+const twitchInput = document.getElementById('twitchInput');
+const addTwitchBtn = document.getElementById('addTwitchBtn');
+const twitchListEl = document.getElementById('twitchList');
+const gameInput = document.getElementById('gameInput');
+const addGameBtn = document.getElementById('addGameBtn');
+const gamesListEl = document.getElementById('gamesList');
+const connectBtn = document.getElementById('connectBtn');
+const walletAddressEl = document.getElementById('walletAddress');
+
+const LS_KEY_TWITCH = 'gaming_portal_twitch_web3';
+const LS_KEY_GAMES = 'gaming_portal_games_web3';
+
+// --- News ---
+function renderNews(articles){
+  const q = (queryEl.value || '').toLowerCase();
+  newsListEl.innerHTML = '';
+  const filtered = (articles||[]).filter(a=>a.title.toLowerCase().includes(q));
+  if(filtered.length===0){ newsListEl.innerHTML='<div class="small">No news found.</div>'; return; }
+  filtered.forEach(a=>{
+    const item = document.createElement('div');
+    item.style.padding='8px'; item.style.marginBottom='6px'; item.style.borderRadius='6px'; item.style.background='rgba(255,255,255,0.02)';
+    item.innerHTML = `<strong>${a.title}</strong><div class="small">${a.source} • ${new Date(a.publishedAt).toLocaleString()}</div><div class="small">${a.description}</div>`;
+    newsListEl.appendChild(item);
+  });
+}
+
+// --- Twitch ---
+function renderTwitchList(){
+  const arr = JSON.parse(localStorage.getItem(LS_KEY_TWITCH)||'[]');
+  twitchListEl.innerHTML='';
+  if(arr.length===0){ twitchListEl.innerHTML='<div class="small">No channels yet.</div>'; return; }
+  arr.forEach(name=>{
+    const container = document.createElement('div');
+    container.style.padding='8px'; container.style.borderRadius='6px'; container.style.background='rgba(255,255,255,0.01)';
+    container.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><strong>${name}</strong><button class="small" onclick="removeTwitch('${name}')">Remove</button></div>
+    <iframe class="twitch-frame" src="https://player.twitch.tv/?channel=${encodeURIComponent(name)}&parent=${window.location.hostname||'localhost'}&autoplay=false" allowfullscreen></iframe>`;
+    twitchListEl.appendChild(container);
+  });
+}
+function addTwitch(){ const val=twitchInput.value.trim().toLowerCase(); if(!val) return; const arr=JSON.parse(localStorage.getItem(LS_KEY_TWITCH)||'[]'); if(arr.includes(val)){twitchInput.value='';return;} arr.unshift(val); localStorage.setItem(LS_KEY_TWITCH,JSON.stringify(arr.slice(0,8))); twitchInput.value=''; renderTwitchList();}
+function removeTwitch(name){ const arr=JSON.parse(localStorage.getItem(LS_KEY_TWITCH)||'[]').filter(x=>x!==name); localStorage.setItem(LS_KEY_TWITCH,JSON.stringify(arr)); renderTwitchList();}
+
+// --- Games ---
+function renderGames(){
+  const arr = JSON.parse(localStorage.getItem(LS_KEY_GAMES)||'[]');
+  gamesListEl.innerHTML='';
+  if(arr.length===0){ gamesListEl.innerHTML='<div class="small">No games yet — add one!</div>'; return; }
+  arr.forEach(g=>{
+    const el = document.createElement('div');
+    el.className='game-row';
+    el.innerHTML=`<div><strong>${g.name}</strong> <span style="background:#6ee7b7;color:#0b1020;padding:2px 6px;margin-left:8px;border-radius:4px;font-size:11px;">Coming Soon</span>
+    <div class="small">Added ${new Date(g.added).toLocaleString()}</div></div>
+    <div style="display:flex;gap:8px"><button class="small" onclick="launchGame('${g.id}')">Launch</button>
+    <button class="small" onclick="removeGame('${g.id}')">Remove</button></div>`;
+    gamesListEl.appendChild(el);
+  });
+}
+function addGame(){ const val=gameInput.value.trim(); if(!val) return; const arr=JSON.parse(localStorage.getItem(LS_KEY_GAMES)||'[]'); arr.unshift({id:'g'+Date.now(),name:val,added:Date.now()}); localStorage.setItem(LS_KEY_GAMES,JSON.stringify(arr)); gameInput.value=''; renderGames();}
+function removeGame(id){ const arr=JSON.parse(localStorage.getItem(LS_KEY_GAMES)||'[]').filter(x=>x.id!==id); localStorage.setItem(LS_KEY_GAMES,JSON.stringify(arr)); renderGames();}
+function launchGame(id){ alert('Placeholder: link real game later.'); }
+
+// --- Web3 Connect ---
+async function connectWallet(){
+  if(!window.ethereum){ alert('MetaMask not installed!'); return; }
+  try{
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts",[]);
+    const signer = await provider.getSigner();
+    const address = await signer.getAddress();
+    walletAddressEl.innerText='Wallet: '+address;
+    connectBtn.innerText='Connected';
+  } catch(err){ console.error(err); alert('Failed to connect wallet'); }
+}
+
+// --- Init ---
+document.addEventListener('DOMContentLoaded',()=>{
+  renderNews(demoArticles);
+  renderTwitchList();
+  renderGames();
+});
+
+refreshBtn.addEventListener('click',()=>renderNews(demoArticles));
+addTwitchBtn.addEventListener('click',addTwitch);
+addGameBtn.addEventListener('click',addGame);
+connectBtn.addEventListener('click',connectWallet);
+</script>
+</body>
+</html>
